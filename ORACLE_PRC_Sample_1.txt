@@ -1,0 +1,64 @@
+CREATE OR REPLACE procedure STGLIVE.auc2016_exceptions (p_date date)  as
+
+  v_start_date      date :=trunc(p_date,'year'); ----changed to 2019 31jan2019 to test new snapshot_1 table below by yeni
+  v_date            date := trunc(p_date);
+  v_seq             number;  
+  v_rows_processed  number := 0;
+  v_message         varchar2(4000);
+  v_end_date        date := to_date('20201231','yyyymmdd');
+  
+begin
+
+    select process_seq.nextval into v_seq from dual;
+
+    insert into process_log_hdr(process_sequence, process_type, process_name, reference_date, status, message, row_count, start_date, end_date, duration)
+    values(v_seq, 'AUC2016_EXCEPTIONS', 'AUC2016_EXCEPTIONS', v_date, 'STARTED', null, 0 , sysdate, null, null);
+
+    commit;
+
+    update auc_2016_investment_17 set flag = 'N'  where reference_date = v_date;
+    
+    commit;
+    
+    execute immediate 'truncate tmp_qualified_01';
+    
+    insert into tmp_qualified_01( ac_no, total_inflow, amount_booked) 
+    select  a.ac_no, total_inflow, amount_booked 
+      from (select ac_no, sum(funds) total_inflow from daily_new_funds where trn_dt >= v_start_date group by ac_no) a,
+           (select dflt_settle_ac,sum(amount) amount_booked from auc_2016_investment_17 a where reference_date = v_date
+               and contract_status = 'A' group by dflt_settle_ac) b 
+      where a.ac_no = b.dflt_settle_ac
+        and total_inflow >= amount_booked;  
+        
+    commit;
+    
+    merge into (select *
+                  from auc_2016_investment_17 a
+                 where reference_date = v_date) a
+         using tmp_qualified_01 b
+            on (a.dflt_settle_ac = b.ac_no)
+    when matched
+    then
+       update set flag = 'Y';
+       
+    commit;
+    
+
+    update auc_2016_investment_17
+       set flag = 'Y'
+     where length (trim (dflt_settle_ac)) <> '10';
+
+    commit;                         
+    
+  exception when others then
+    v_message := 'Failed:' || substr(sqlerrm, 1, 200);
+
+    insert into fcytracker_log (process_name, process_type, reference_date, row_count, message, created_date)
+      values('prc_investment_check','Derive', (select max(today) from sttm_dates@loc_fcubslive), 0, v_message, sysdate);
+
+    commit;
+    
+ 
+  
+    end;
+/

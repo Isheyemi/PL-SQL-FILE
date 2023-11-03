@@ -1,0 +1,586 @@
+CREATE OR REPLACE package body STGLIVE.prc_korede_250060400
+ as
+
+
+procedure headoffice as
+
+v_startdate date;
+v_enddate date;
+
+
+begin
+
+--select to_date('01-may-2016') into v_startdate from dual;
+--select to_date('31-may-2016') into v_enddate from dual;
+
+
+--HEAD OFFICE -099 250060400 (CASA) - STATE
+execute immediate 'truncate table korede_17';
+insert into korede_17 
+SELECT a.ac_branch AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name, customer_type,
+       address_line1 || ' ' || address_line2 || ' '  || address_line3 || ' '  || address_line4 || ', ' || COUNTRY address,
+      nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+                      webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) 
+ Description, address_line4 state,
+                        (a.lcy_amount*10)    
+                            
+  FROM actb_history@loc_fcubslive a, src_sttm_customer b, src_sttm_branch c,
+   (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x 
+   
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and  trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND (trunc(last_day(add_months(sysdate,-1))))-1
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = '099'
+AND a.trn_code <> 'GHL'; commit;
+
+
+insert into korede_17 
+SELECT a.ac_branch AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name, customer_type,
+       address_line1 || ' ' || address_line2 || ' '  || address_line3 || ' '  || address_line4 || ', ' || COUNTRY address,
+      nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a, src_sttm_customer b, src_sttm_branch c,
+   (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and  trn_dt = (trunc(last_day(add_months(sysdate,-1))))
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = '099'
+AND a.trn_code <> 'GHL'; commit;
+
+end;
+
+procedure abuja_brn
+as
+
+v_startdate date;
+v_enddate date;
+
+begin
+
+
+
+--ABUJA BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_11';
+for v_cursor in (select distinct branch_code from brn_250060400 where spool_type = 'ABUJA BRANCHES' and process = 'N')
+loop
+insert into korede_11 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name, customer_type,
+       address_line1 || ' ' || address_line2 || ' '  || address_line3 || ' '  || address_line4 || ', ' || COUNTRY address,
+      nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a, src_sttm_customer b, src_sttm_branch c, 
+  (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code AND a.trn_code <> 'GHL'; commit; 
+   
+   update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit; end loop; end;
+
+procedure all_brn_except
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3';
+for v_cursor in  (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_3 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+          webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description,
+  address_line4 state,          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+    (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit; end loop; end;
+
+procedure all_brn_except_bk
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3_bk';
+for v_cursor in  (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_3_bk 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE)  Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+ end loop;
+ 
+ insert into korede_3
+select * from korede_3_bk
+where branch not in (select distinct branch from korede_3); commit; end;
+
+procedure all_brn_except_bk1
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3_bk1';
+for v_cursor in  (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_3_bk1 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+         webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE)Description,address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,  
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+ end loop;
+ 
+ insert into korede_3
+select * from korede_3_bk1
+where branch not in (select distinct branch from korede_3); commit; end;
+
+procedure all_brn_except_bk2
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3_bk2';
+for v_cursor in   (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+  and process = 'N')
+loop
+insert into korede_3_bk2 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+         webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+ end loop;
+ 
+ insert into korede_3
+select * from korede_3_bk2
+where branch not in (select distinct branch from korede_3); commit; end;
+
+procedure all_brn_except_bk3
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3_bk3';
+for v_cursor in   (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_3_bk3 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+ end loop;
+ 
+ insert into korede_3
+select * from korede_3_bk3
+where branch not in (select distinct branch from korede_3); commit; end;
+procedure all_brn_except_bk4
+as
+
+begin
+
+--ALL BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_3_bk4';
+for v_cursor in   (select distinct branch_code from brn_250060400 where spool_type = 'ALL BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_3_bk4 
+SELECT v_cursor.branch_code AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400'
+   and a.ac_ccy='NGN'
+   and a.ac_branch = v_cursor.branch_code
+AND a.trn_code <> 'GHL' ; commit;
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+ end loop;
+ 
+ insert into korede_3
+select * from korede_3_bk4
+where branch not in (select distinct branch from korede_3); commit; end;
+ procedure lagos_brn
+as
+
+v_startdate date;
+v_enddate date;
+
+begin
+
+
+
+--LAGOS BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_23';
+for v_cursor in (select distinct branch_code from brn_250060400 where spool_type = 'LAGOS BRANCHES' and branch_code in 
+ (select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_23 
+SELECT v_cursor.BRANCH_CODE AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch, 
+     (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch  = v_cursor.branch_code
+AND a.trn_code <> 'GHL'; commit; 
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+end loop; end;
+
+procedure lagos_brn_bk
+as
+
+v_startdate date;
+v_enddate date;
+
+begin
+
+
+
+
+--LAGOS BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_23_bk';
+for v_cursor in (select distinct branch_code from brn_250060400 where spool_type = 'LAGOS BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O')
+ and process = 'N')
+loop
+insert into korede_23_bk 
+SELECT v_cursor.BRANCH_CODE AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+                      webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) 
+ Description, address_line4 state,
+                                     (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+) --included to cater for tax number
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch  = v_cursor.branch_code
+AND a.trn_code <> 'GHL'; commit; 
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+end loop; 
+
+insert into korede_23
+select * from korede_23_bk
+where branch not in (select distinct branch from korede_23); commit;
+end;
+
+procedure lagos_brn_bk1
+as
+
+v_startdate date;
+v_enddate date;
+
+begin
+
+
+
+--LAGOS BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_23_bk1';
+for v_cursor in (select distinct branch_code from brn_250060400 where spool_type = 'LAGOS BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O') 
+and process = 'N')
+loop
+insert into korede_23_bk1 
+SELECT v_cursor.BRANCH_CODE AS branch,branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+)
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400' 
+   ----AND  a.drcr_ind='C'
+   and a.ac_ccy='NGN'
+   and a.ac_branch  = v_cursor.branch_code
+AND a.trn_code <> 'GHL'; commit; 
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+end loop; 
+
+insert into korede_23
+select * from korede_23_bk1
+where branch not in (select distinct branch from korede_23); commit;
+end;
+
+procedure lagos_brn_bk2
+as
+
+v_startdate date;
+v_enddate date;
+
+begin
+
+
+
+--LAGOS BRANCHES 250060400 EXCLUDING LAG AND ABJ-FED (CASA) - STATE
+execute immediate 'truncate table korede_23_bk2';
+for v_cursor in (select distinct branch_code from brn_250060400 where spool_type = 'LAGOS BRANCHES' and branch_code in 
+(select branch_code from src_sttm_branch where record_stat = 'O') 
+and process = 'N')
+loop
+insert into korede_23_bk2 
+SELECT v_cursor.BRANCH_CODE AS branch, branch_name, a.ac_no gl_code, a.related_account,
+       customer_name1 customer_name,
+        customer_type, address_line1 || ' ' || address_line2 || ' ' || address_line3|| ' ' || address_line4 address,
+     nvl(x.field_val_7,'N/A') tax_number, --modified as requested 
+       a.related_customer customer_no, a.ac_ccy currency, a.drcr_ind drcr,
+       a.lcy_amount, a.fcy_amount, a.trn_dt transaction_date,
+       a.value_dt value_date, a.user_id user_id, a.trn_ref_no,
+           webserve.fn_get_desc@loc_fcubslive(a.module,a.Trn_Ref_No,
+                            a.ac_entry_sr_no,  
+                            a.event_sr_no,    
+                            a.trn_code,a.RELATED_ACCOUNT, a.ac_no, a.ac_branch, a.AC_CCY, a.AMOUNT_TAG, a.EVENT,
+ a.INSTRUMENT_CODE, a.RELATED_CUSTOMER, a.VALUE_DT, a.TRN_DT, a.RELATED_REFERENCE) Description, address_line4 state,
+          (a.lcy_amount*10) "Transaction_Amount"  
+  FROM actb_history@loc_fcubslive a,src_sttm_branch,
+      (select * from cstm_function_userdef_fields@loc_fcubslive where field_val_7 is not null and function_id = 'STDCIF' ) x,
+  src_sttm_customer
+ WHERE ac_branch = branch_code 
+ and related_customer||'~'=x.rec_key(+)
+ and related_customer = customer_no(+) and trn_dt BETWEEN trunc(add_months(sysdate,-1), 'mon') AND trunc(last_day(add_months(sysdate,-1)))
+   AND a.ac_no = '250060400' 
+   and a.ac_ccy='NGN'
+   and a.ac_branch  = v_cursor.branch_code
+AND a.trn_code <> 'GHL'; commit; 
+
+update brn_250060400
+set process = 'Y'
+where branch_code = v_cursor.branch_code; commit;
+end loop; 
+
+insert into korede_23
+select * from korede_23_bk2
+where branch not in (select distinct branch from korede_23); commit;
+end;
+
+end;
+/

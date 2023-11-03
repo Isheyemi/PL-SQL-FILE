@@ -1,0 +1,287 @@
+CREATE OR REPLACE package body STGLIVE.pkg_stamp_duty as 
+
+procedure prc_xfers_exempt(p_startdate date, p_enddate date) as
+v_pid number;
+v_start date := trunc(p_startdate);
+v_end date := trunc(p_enddate);
+v_tabname varchar2(200) := 'XFERS_EXEMPT_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY');
+
+begin
+
+select eod_report_seq.nextval into v_pid from dual;
+insert into STAMP_DUTY_LOG values(v_pid, 'XFERS_EXEMPT', v_tabname, v_start, v_end, null, sysdate, null); commit;
+
+execute immediate 'truncate table date_temp';
+insert into date_temp
+select full_date from dim_date where full_date between v_start and v_end;
+commit;
+
+--execute immediate 'CREATE TABLE XFERS_EXEMPT_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' AS SELECT * FROM XFERS_EXEMPT_ WHERE 1=0';
+--execute immediate 'INSERT INTO XFERS_EXEMPT_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' SELECT 
+execute immediate 'CREATE TABLE XFERS_EXEMPT_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' AS SELECT 
+X.* ,
+(SELECT AC_DESC 
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = X.DR_ACC) DR_ACC_DESC,
+(SELECT CUST_NO 
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = X.DR_ACC) DR_CUSTOMER,  
+(SELECT DECODE(account_type,''U'',''CURRENT'',''S'',''SAVINGS'',''Y'',''TERM DEPOSITS'',''N'',''NOSTROS'')
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = X.DR_ACC) DR_ACC_TYPE,
+    (SELECT DECODE(account_type,''U'',''CURRENT'',''S'',''SAVINGS'',''Y'',''TERM DEPOSITS'',''N'',''NOSTROS'')
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = X.CR_ACC) CR_ACC_TYPE
+FROM (
+SELECT trn_ref_no,
+module,
+event,
+ac_branch,
+ac_no CR_ACC,
+(SELECT AC_DESC 
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = a.ac_no) CR_ACC_DESC,
+(SELECT CUST_NO 
+    FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = a.ac_no) CR_CUSTOMER,
+ac_ccy,
+drcr_ind,
+trn_code,
+(SELECT trn_desc
+FROM src_sttm_trn_code WHERE TRN_CODE = A.TRN_CODE) TRAN_DESC,
+lcy_amount,
+trn_dt,
+(SELECT ac_no 
+        FROM src_ACTB_HISTORY WHERE TRN_REF_NO = A.TRN_REF_NO 
+        AND MODULE = A.MODULE AND USER_ID = A.USER_ID 
+        AND TRN_CODE = A.TRN_CODE 
+        AND LCY_AMOUNT = A.LCY_AMOUNT
+        and ac_no <> ''140440001'' and drcr_ind = ''D''  AND CUST_GL = ''A''
+        AND EVENT = ''INIT'') DR_ACC   
+FROM src_ACTB_HISTORY a, src_STTM_CUST_ACCOUNT B 
+WHERE A.AC_NO = B.CUST_AC_NO
+AND TRN_DT in (select full_date from date_temp) AND A.MODULE NOT IN (''IC'',''LD'',''MM'',''CL'',''LC'')
+AND B.ACCOUNT_CLASS IN (''050032'',''030001'',''010018'',''010014'',''010015'',''010016'',
+                ''010017'',''010020'',''010021'',''010002'',''010003'',''010012'',''010007'',
+                ''010008'',''030002'',''010024'',''010001'',''010004'',''010019'',''010023'')  
+and ac_no <> ''140440001''
+and drcr_ind = ''C''
+AND EVENT = ''INIT''
+AND ac_ccy = ''NGN''
+AND CUST_GL = ''A''
+AND LCY_AMOUNT >= ''1000''
+    AND   
+    (SELECT COUNT(1) 
+        FROM src_ACTB_HISTORY
+        WHERE TRN_REF_NO = A.TRN_REF_NO 
+        AND MODULE = A.MODULE 
+        AND USER_ID = A.USER_ID 
+        AND TRN_CODE = A.TRN_CODE 
+        AND LCY_AMOUNT = A.LCY_AMOUNT
+        and ac_no <> ''140440001'' and drcr_ind = ''D'' AND CUST_GL = ''A''
+        AND EVENT = ''INIT'') = ''1''
+
+)  X 
+WHERE (
+        X.cr_customer = (SELECT CUST_NO 
+                            FROM src_STTM_CUST_ACCOUNT WHERE CUST_aC_No = X.DR_ACC)        
+        OR X.DR_ACC IN (SELECT CUST_AC_NO FROM src_STTM_CUST_ACCOUNT WHERE ACCOUNT_TYPE = ''S'' 
+           )                                                                              
+)';
+
+execute immediate 'truncate table STAMP_DUTY_count';
+execute immediate 'insert into STAMP_DUTY_count select count(1) from '||v_tabname;
+commit;
+
+update STAMP_DUTY_LOG
+set PROCESS_END=sysdate
+where process_id=v_pid;
+commit;
+
+end;
+
+
+procedure prc_stamp_charge(p_startdate date, p_enddate date) as
+v_pid number;
+v_start date := trunc(p_startdate);
+v_end date := trunc(p_enddate);
+v_tabname varchar2(200) := 'STAMP_CHARGE_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY');
+
+begin
+
+select eod_report_seq.nextval into v_pid from dual;
+insert into STAMP_DUTY_LOG values(v_pid, 'STAMP_CHARGE', v_tabname, v_start, v_end, null, sysdate, null);
+
+execute immediate 'truncate table date_temp';
+insert into date_temp
+select full_date from dim_date where full_date between v_start and v_end;
+commit;
+
+execute immediate ' CREATE TABLE STAMP_CHARGE_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY')||' AS SELECT * FROM STAMP_CHARGE_ WHERE 1=0';
+EXECUTE IMMEDIATE 'INSERT INTO STAMP_CHARGE_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY')||' 
+SELECT WEBSERVE.Fn_Get_Narr@loc_fcubslive (A.module,A.trn_ref_no,A.ac_entry_sr_no,A.event_sr_no,A.trn_code,A.related_account) NARRATION,
+trn_ref_no,ac_branch,ac_no,
+(SELECT AC_DESC FROM src_STTM_CUST_ACCOUNT WHERE CUST_AC_NO = A.AC_NO) ACCT_NAME,
+ac_ccy,drcr_ind,trn_code,lcy_amount,related_customer,
+trn_dt,value_dt,ac_entry_sr_no,external_ref_no,user_id,auth_id
+FROM src_ACTB_HISTORY A, src_STTM_CUST_ACCOUNT B 
+WHERE A.AC_NO = B.CUST_aC_NO 
+AND A.TRN_DT in (select full_date from date_temp) AND A.MODULE NOT IN (''IC'',''LD'',''MM'',''CL'',''LC'')         
+AND CUST_GL = ''A''                                     
+AND drcr_ind = ''C''                                      
+AND B.ACCOUNT_CLASS
+IN (''050032'',''010018'',''010014'',''010015'',''010016'',
+''010017'',''010020'',''010021'',''010002'',''010003'',''010012'',''010007'',
+''010008'',''030002'',''010024'',''010001'',''010004'',''010019'',''010023'')    
+AND EVENT = ''INIT''                                                             
+AND ac_ccy = ''NGN''                                       
+AND lcy_amount >= ''1000''                                  
+AND TRN_CODE NOT IN (''SAL'',''SSU'',''RVM'',''RVA'')
+AND (trn_ref_no,ac_no)                                      
+NOT IN 
+(SELECT trn_ref_no, cr_acc 
+FROM XFERS_EXEMPT_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' )                  
+AND EXTERNAL_REF_NO 
+NOT IN 
+(
+SELECT session_id
+FROM NIPSYSTEM.NIPX_DIRECT_CREDITS@loc_fcubslive
+WHERE SUBSTR(SESSION_ID, 7, 6) >= ''160101''
+AND AMOUNT >= 1000
+AND SOURCE_BVN = DEST_BVN
+AND DIRECTION_ID = 1
+AND RESPONSE_CODE = ''00''
+)';
+
+execute immediate 'truncate table STAMP_DUTY_count';
+execute immediate 'insert into STAMP_DUTY_count select count(1) from '||v_tabname;
+commit;
+
+update STAMP_DUTY_LOG
+set PROCESS_END=sysdate
+where process_id=v_pid;
+commit;
+
+end;
+
+
+procedure prc_stamp_chg(p_startdate date, p_enddate date) as
+v_pid number;
+v_start date := trunc(p_startdate);
+v_end date := trunc(p_enddate);
+v_tabname varchar2(200) := 'STAMP_CHG_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY');
+
+begin
+
+select eod_report_seq.nextval into v_pid from dual;
+insert into STAMP_DUTY_LOG values(v_pid, 'STAMP_CHG', v_tabname, v_start, v_end, null, sysdate, null);
+
+execute immediate 'CREATE TABLE STAMP_CHG_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' AS SELECT * FROM  STAMP_CHG_ WHERE 1=0';
+EXECUTE IMMEDIATE 
+'INSERT INTO STAMP_CHG_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') ||' SELECT ac_no DR_ACCT_NO,
+trn_dt ORG_TXN_DATE,
+LCY_AMOUNT ORG_TXN_AMOUNT,
+NARRATION ORG_NARRATION,
+''50'' AMOUNT,
+''STAMP DUTY''||TO_CHAR(trn_dt,'' DDMONYY '')||''AMT:''||lcy_amount NARRATION,
+''N'' STATUS, 
+''250080750'' CR_GL,
+''099'' CR_GL_BRN,
+''STAMPDUTY'' REF_NO,
+''PSD'' CHG_CODE,
+ROWNUM RNUM
+FROM STAMP_CHARGE_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY') || 
+'WHERE SUBSTR(TRN_REF_NO,4,4) NOT in (''ACDO'',''PCDO'',''CHDP'') 
+AND TRN_CODE NOT IN (''SSU'',''FDS'',''GSW'',''PRL'',''RVM'',''SAL'')
+and  external_ref_no NOT LIKE ''VNR%''
+AND NOT ( UPPER(NARRATION) LIKE ''%REV%'' 
+OR UPPER(NARRATION) LIKE ''%RVSL%''
+OR UPPER(NARRATION) LIKE ''%SALARY%''
+OR UPPER(NARRATION) LIKE ''%ALLOWANCE%''
+OR UPPER(NARRATION) LIKE ''%WAGE%''
+OR UPPER(NARRATION) LIKE ''%PENSION%''
+)';
+
+execute immediate 'truncate table STAMP_DUTY_count';
+execute immediate 'insert into STAMP_DUTY_count select count(1) from '||v_tabname;
+commit;
+
+update STAMP_DUTY_LOG
+set PROCESS_END=sysdate
+where process_id=v_pid;
+commit;
+
+end;
+
+
+procedure prc_STAMP_DUTY_DETAILS(p_startdate date, p_enddate date) as
+v_pid number;
+v_start date := trunc(p_startdate);
+v_end date := trunc(p_enddate);
+begin
+select eod_report_seq.nextval into v_pid from dual;
+insert into STAMP_DUTY_LOG values(v_pid, 'STAMP_DUTY_DETAILS', 'STAMP_DUTY_DETAILS', v_start, v_end, null, sysdate, null);
+
+execute immediate 'truncate table STAMP_DUTY_DETAILS';
+execute immediate 'INSERT INTO STAMP_DUTY_DETAILS
+SELECT A.DR_ACCT_NO, A.ORG_TXN_DATE, A.ORG_TXN_AMOUNT, 
+A.AMOUNT CHG_AMOUNT, A.NARRATION, A.CR_GL, A.CR_GL_BRN, A.CHG_CODE CHG_TRN_CODE,
+B.ac_desc ACCT_NAME, B.ac_stat_no_dr NO_DEBIT , 
+B.ac_stat_block BLOCK, B.ac_stat_dormant DORMANT,B.ac_stat_frozen FROZEN,
+B.acy_avl_bal AVAIL_BAL, DECODE(B.RECORD_sTAT ,''O'',''OPEN'',''C'',''CLOSED'') STATUS,
+A.ORG_NARRATION
+FROM STAMP_CHG_'||to_char(v_start,'DD')||'_'||to_char(v_end,'DDMMYYYY')||' A, 
+src_STTM_CUST_ACCOUNT B 
+WHERE A.DR_ACCT_NO = B.CUST_AC_NO
+AND B.CUST_AC_NO 
+NOT IN (SELECT cust_ac_no FROM ADEBANJOAD.STAMPDUTY_EXEMPTACCTS@loc_fcubslive)';
+commit;
+
+update STAMP_DUTY_LOG
+set PROCESS_END=sysdate
+where process_id=v_pid;
+commit;
+
+end;
+
+procedure prc_STAMP_DUTY_AGG_FINAL(p_startdate date, p_enddate date) as
+v_pid number;
+v_start date := trunc(p_startdate);
+v_end date := trunc(p_enddate);
+begin
+select eod_report_seq.nextval into v_pid from dual;
+insert into STAMP_DUTY_LOG values(v_pid, 'STAMP_DUTY_AGG_FINAL', 'STAMP_DUTY_AGG_FINAL', v_start, v_end, null, sysdate, null);
+
+execute immediate 'truncate table STAMP_DUTY_AGG_FINAL';
+execute immediate 'STAMP_DUTY_AGG_FINAL
+SELECT DR_ACCT_NO,
+SUM(CHG_AMOUNT) CUM_CHG_AMT,
+CR_GL,
+CR_GL_BRN,
+CHG_TRN_CODE,
+ACCT_NAME,
+NO_DEBIT,
+BLOCK,
+DORMANT,
+FROZEN,
+AVAIL_BAL,
+STATUS,
+''STAMP DUTY CHARGE FOR WEEK ENDED '||to_char(v_end,'DDMMMYYYY') ||' NARRATION
+FROM STAMP_DUTY_DETAILS
+ WHERE org_txn_date
+BETWEEN '|| v_start ||' AND '|| v_end ||'
+GROUP BY DR_ACCT_NO, CR_GL,CR_GL_BRN,CHG_TRN_CODE,ACCT_NAME,
+NO_DEBIT,BLOCK,DORMANT,FROZEN,AVAIL_BAL,STATUS';
+
+update STAMP_DUTY_LOG
+set PROCESS_END=sysdate
+where process_id=v_pid;
+
+end;
+
+
+procedure prc_runall(p_startdate date, p_enddate date) as
+begin
+pkg_stamp_duty.prc_xfers_exempt(p_startdate, p_enddate);
+pkg_stamp_duty.prc_stamp_charge(p_startdate, p_enddate);
+pkg_stamp_duty.prc_stamp_chg(p_startdate, p_enddate);
+pkg_stamp_duty.prc_STAMP_DUTY_DETAILS(p_startdate, p_enddate);
+pkg_stamp_duty.prc_STAMP_DUTY_AGG_FINAL(p_startdate, p_enddate);
+end;
+
+end;
+/

@@ -1,0 +1,262 @@
+CREATE OR REPLACE package body STGLIVE.PKG_NIBSS_ETL as
+
+procedure prc_create_BUSSINES_REG(p_date date) as
+
+v_date_char varchar2(20) := to_char(p_date,'DDMONYYYY');
+
+
+begin
+execute immediate 
+'create table BUSSINES_REG_'||v_date_char||' as
+select a.c_national_id,b.customer_no
+from fcubslive.sttm_cust_corporate@loc_fcubslive a, fcubslive.sttm_customer@loc_fcubslive b
+where a.customer_no = b.customer_no
+and a.c_national_id is not null
+and b.auth_stat=''A''
+AND b.customer_no NOT IN (''000128503'',''001221454'',''002089989'',''002212207'',''000019978'',''004102646'',''000369832'',''004814797'',''002664645'',
+''005025146'',''000070451'',''002697190'',''002511605'',''005978016'',''003789417'',''005904505'',''005731087'',''003186627'',
+''003907115'',''003229753'',''001969075'')
+and ( a.c_national_id  LIKE ''0%''
+or a.c_national_id  LIKE ''00%''
+or a.c_national_id  LIKE ''000%''
+or a.c_national_id  LIKE ''0000%''
+or a.c_national_id  LIKE ''00000%''
+or a.c_national_id  LIKE ''000000%''
+or a.c_national_id  LIKE ''0000000%''
+or a.c_national_id  LIKE ''00000000%''
+or a.c_national_id  LIKE ''000000000%'')
+and b.customer_category <>''IND''
+AND a.c_national_id NOT LIKE ''%RC%''
+AND a.c_national_id NOT LIKE ''%A%''
+AND a.c_national_id NOT LIKE ''%B%''
+AND a.c_national_id NOT LIKE ''%C%''
+AND a.c_national_id NOT LIKE ''%D%''
+AND a.c_national_id NOT LIKE ''%M%''
+AND a.c_national_id NOT LIKE ''%N%''
+AND a.c_national_id NOT LIKE ''%/%''
+AND a.c_national_id NOT LIKE ''%K%''
+AND a.c_national_id NOT LIKE ''%*%''
+AND a.c_national_id NOT LIKE ''%-%''
+AND b.customer_no NOT IN ( ''000128503'',''001221454'',''002089989'',''002212207'',''000019978'',''004102646'',''000369832'',''004814797'',
+''002664645'',''005025146'',''000070451'',''002697190'',''002511605'',''005978016'',''003789417'',''005904505'',
+''005731087'',''003186627'',''003907115'',''004331772'')
+AND a.c_national_id NOT LIKE ''.%''
+AND a.c_national_id NOT LIKE ''%,%''
+AND a.c_national_id NOT LIKE ''%L%''
+AND a.c_national_id NOT IN (''1'',''10'')';
+
+end;
+
+
+procedure prc_create_NIBSS_CUSTOMER (p_date date) as
+v_date_char varchar2(20) := to_char(p_date,'DDMONYYYY');
+
+begin
+
+execute immediate 
+'create table NIBSS_CUSTOMER_'||v_date_char||' as
+select 
+REGEXP_REPLACE(replace((case B.customer_type when ''I'' THEN COALESCE((substr(D.last_name,1,40)),(substr(D.first_name,1,40)),(substr(a.ac_desc,1,40))) ELSE (substr(a.ac_desc,1,40)) END ),CHR(10)), ''[^A-Za-z]'')ACCOUNT_NAME_SURNAME,
+REGEXP_REPLACE(replace((case B.customer_type when ''I'' THEN (substr(D.first_name||'', ''||D.middle_name,1,40)) ELSE (NULL) END ),CHR(10)), ''[^A-Za-z]'')ACCOUNT_NAME_OTHERS,
+to_char(a.cust_ac_no,''0000000000'') as NUBAN_ACCOUNT_NO,
+DECODE(C.ac_class_type,''U'',''1'',''S'',''2'')ACCOUNT_TYPE,
+(case B.customer_type  when ''I'' THEN to_CHAR(D.date_of_birth,''DDMMYYYY'') ELSE (B.short_name) END )CUST_RC_DATE,
+(CASE
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' and nvl(a.ac_stat_block,''N'') = ''N'' 
+and nvl(a.ac_stat_dormant,''N'') = ''N'' and nvl(a.ac_stat_frozen,''N'') = ''N'' and nvl(a.record_stat,''O'') = ''O'' 
+and nvl(a.auth_stat,''A'') = ''A'' then ''REGULAR''
+when nvl(a.record_stat,''O'') = ''C'' then ''CLOSED''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''Y'' then ''POSTNODEBITANDCREDIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' then ''POSTNODEBIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and a.ac_stat_no_cr = ''Y'' then ''POSTNOCREDIT''
+when nvl(a.ac_stat_block,''N'') = ''Y'' then ''ACCOUNTBLOCKED''
+when nvl(a.ac_stat_dormant,''N'') = ''Y'' then ''DORMANT''
+when nvl(a.ac_stat_frozen,''N'') = ''Y'' then ''FROZEN''
+else ''IRREGULAR''
+END ) AccountStatus, E.field_val_3 Bank_Verification_number
+
+from FCUBSLIVE.sttm_cust_account@loc_fcubslive a,
+ FCUBSLIVE.sttm_cust_personal@loc_fcubslive d,
+ FCUBSLIVE.sttm_customer@loc_fcubslive B,
+ FCUBSLIVE.sttm_account_class@loc_fcubslive c,
+FCUBSLIVE.cstm_function_userdef_fields@loc_fcubslive E
+
+where A.ACCOUNT_CLASS=C.ACCOUNT_CLASS AND A.cust_no=D.CUSTOMER_NO 
+AND A.cust_no=B.CUSTOMER_NO AND A.cust_no=substr(E.rec_key,1,9)
+AND A.AUTH_STAT = ''A'' AND B.AUTH_STAT = ''A''
+AND E.FUNCTION_ID = ''STDCIF'' 
+---and substr(rec_key,1,9)= substr(E.rec_key,1,9)
+AND B.customer_type = ''I''
+
+UNION
+
+select 
+REGEXP_REPLACE(replace((case B.customer_type when ''I'' THEN COALESCE((substr(D.last_name,1,40)),(substr(D.first_name,1,40)),(substr(a.ac_desc,1,40))) ELSE (substr(a.ac_desc,1,40)) END ),CHR(10)), ''[^A-Za-z]'')ACCOUNT_NAME_SURNAME,
+null as ACCOUNT_NAME_OTHERS,
+to_char(a.cust_ac_no,''0000000000'') as NUBAN_ACCOUNT_NO,
+DECODE(C.ac_class_type,''U'',''1'',''S'',''2'')ACCOUNT_TYPE,
+F.c_national_id  CUST_RC_DATE,
+(CASE
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' and nvl(a.ac_stat_block,''N'') = ''N'' 
+and nvl(a.ac_stat_dormant,''N'') = ''N'' and nvl(a.ac_stat_frozen,''N'') = ''N'' and nvl(a.record_stat,''O'') = ''O'' 
+and nvl(a.auth_stat,''A'') = ''A'' then ''REGULAR''
+when nvl(a.record_stat,''O'') = ''C'' then ''CLOSED''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''Y'' then ''POSTNODEBITANDCREDIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' then ''POSTNODEBIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and a.ac_stat_no_cr = ''Y'' then ''POSTNOCREDIT''
+when nvl(a.ac_stat_block,''N'') = ''Y'' then ''ACCOUNTBLOCKED''
+when nvl(a.ac_stat_dormant,''N'') = ''Y'' then ''DORMANT''
+when nvl(a.ac_stat_frozen,''N'') = ''Y'' then ''FROZEN''
+else ''IRREGULAR''
+END ) AccountStatus, E.field_val_3 Bank_Verification_Number
+
+from FCUBSLIVE.sttm_cust_account@loc_fcubslive a,
+ FCUBSLIVE.sttm_cust_personal@loc_fcubslive d,
+ FCUBSLIVE.sttm_customer@loc_fcubslive B,
+ FCUBSLIVE.sttm_account_class@loc_fcubslive c,
+FCUBSLIVE.cstm_function_userdef_fields@loc_fcubslive E,
+fcubslive.sttm_cust_corporate@loc_fcubslive F
+
+where A.ACCOUNT_CLASS=C.ACCOUNT_CLASS AND A.cust_no=D.CUSTOMER_NO 
+AND A.cust_no=B.CUSTOMER_NO AND a.CUST_NO=F.CUSTOMER_NO
+AND A.cust_no=substr(E.rec_key,1,9)
+AND A.AUTH_STAT = ''A'' AND B.AUTH_STAT = ''A''
+AND E.FUNCTION_ID = ''STDCIF'' 
+AND B.customer_type <> ''I''
+AND D.CUSTOMER_NO IN (SELECT CUSTOMER_NO FROM BUSSINES_REG_'||v_date_char||')
+
+
+union
+
+---customers without RC
+select 
+REGEXP_REPLACE(replace((case B.customer_type when ''I'' THEN COALESCE((substr(D.last_name,1,40)),(substr(D.first_name,1,40)),(substr(a.ac_desc,1,40))) ELSE COALESCE( trim((substr(a.ac_desc,1,40))),(substr(b.customer_name1,1,40))) END ),CHR(10)), ''[^A-Za-z]'')ACCOUNT_NAME_SURNAME,
+REGEXP_REPLACE(replace((case B.customer_type when ''I'' THEN (substr(D.first_name||'', ''||D.middle_name,1,40)) ELSE (NULL) END ),CHR(10)), ''[^A-Za-z]'')ACCOUNT_NAME_OTHERS,
+TRIM(to_char(a.cust_ac_no,''0000000000'')) as NUBAN_ACCOUNT_NO,
+DECODE(C.ac_class_type,''U'',''1'',''S'',''2'')ACCOUNT_TYPE,
+null CUST_RC_DATE,
+(CASE
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' and nvl(a.ac_stat_block,''N'') = ''N'' 
+and nvl(a.ac_stat_dormant,''N'') = ''N'' and nvl(a.ac_stat_frozen,''N'') = ''N'' and nvl(a.record_stat,''O'') = ''O'' 
+and nvl(a.auth_stat,''A'') = ''A'' then ''REGULAR''
+when nvl(a.record_stat,''O'') = ''C'' then ''CLOSED''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''Y'' then ''POSTNODEBITANDCREDIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''Y'' and nvl(a.ac_stat_no_cr,''N'') = ''N'' then ''POSTNODEBIT''
+when nvl(a.ac_stat_no_dr,''N'') = ''N'' and a.ac_stat_no_cr = ''Y'' then ''POSTNOCREDIT''
+when nvl(a.ac_stat_block,''N'') = ''Y'' then ''ACCOUNTBLOCKED''
+when nvl(a.ac_stat_dormant,''N'') = ''Y'' then ''DORMANT''
+when nvl(a.ac_stat_frozen,''N'') = ''Y'' then ''FROZEN''
+else ''IRREGULAR''
+END ) AccountStatus, E.field_val_3 Bank_Verification_Number
+from FCUBSLIVE.sttm_cust_account@loc_fcubslive a,
+ FCUBSLIVE.sttm_cust_personal@loc_fcubslive d,
+ FCUBSLIVE.sttm_customer@loc_fcubslive B,
+ FCUBSLIVE.sttm_account_class@loc_fcubslive c,
+FCUBSLIVE.cstm_function_userdef_fields@loc_fcubslive E,
+fcubslive.sttm_cust_corporate@loc_fcubslive F
+ -----= ''001561939'' 
+where A.ACCOUNT_CLASS=C.ACCOUNT_CLASS AND A.cust_no=D.CUSTOMER_NO 
+AND A.cust_no=B.CUSTOMER_NO AND a.CUST_NO=F.CUSTOMER_NO
+AND A.cust_no=substr(E.rec_key,1,9)
+AND A.AUTH_STAT = ''A'' AND B.AUTH_STAT = ''A''
+AND E.FUNCTION_ID = ''STDCIF'' 
+AND B.customer_type <> ''I''
+AND D.CUSTOMER_NO  not in (SELECT CUSTOMER_NO FROM BUSSINES_REG_'||v_date_char||')';
+end;
+
+
+procedure prc_cleanup_NIBSS_CUSTOMER (p_date date) as
+v_date_char varchar2(20) := to_char(p_date,'DDMONYYYY');
+
+begin
+
+execute immediate 'UPDATE NIBSS_CUSTOMER_'||v_date_char||' set AccountStatus=''3'' WHERE AccountStatus=''CLOSED'''; commit;
+execute immediate 'UPDATE NIBSS_CUSTOMER_'||v_date_char||' set AccountStatus=''2'' WHERE AccountStatus=''DORMANT'''; commit;
+execute immediate 'UPDATE NIBSS_CUSTOMER_'||v_date_char||' set AccountStatus=''1'' WHERE AccountStatus not in (''2'',''3'')'; commit;
+execute immediate 'UPDATE NIBSS_CUSTOMER_'||v_date_char||' set nuban_account_no = LTRIM(nuban_account_no)'; commit;
+
+execute immediate 'grant all on NIBSS_CUSTOMER_'||v_date_char||' to dcp';
+
+end;
+
+
+procedure prc_create_ACCESSBRN_ALL (p_startbrn varchar2, p_endbrn varchar2, p_date date) as
+v_date_char varchar2(20) := to_char(p_date,'DDMONYYYY');
+
+begin
+
+execute immediate 'truncate table ACCESSBRN_'||p_startbrn||'_'||p_endbrn;
+
+execute immediate '
+insert into ACCESSBRN_'||p_startbrn||'_'||p_endbrn||'
+select  substr(REGEXP_REPLACE(replace(replace(account_name_surname, '','','' ''),CHR(10)), ''[^A-Za-z]''),1,40) account_name_surname , 
+substr(REGEXP_REPLACE(replace(replace(account_name_others, '','','' ''),CHR(10)), ''[^A-Za-z]''),1,40) account_name_others,
+nuban_account_no,a.account_type,cust_rc_date,AccountStatus, COD_ACCT_NO_OLD OLD_ACCOUNT_NUMBER,
+Bank_Verification_Number,decode(customer_type,''I'',''1'',''C'',''0'',''B'',''0'')Account_Designation,decode(B.ccy,''NGN'',''0'',''USD'',''1'',''GBP'',''2'',''EUR'',''3'',
+''DEM'',''4'',''CAD'',''4'',''FRF'',''4'',''JPY'',''4'',''CHF'',''4'',''NLG'',''4'',''ITL'',''4'',''INR'',''4'',''ZAR'',''4'',''SEK'',
+''4'',''CNY'',''4'',''CFA'',''4'',''NZD'',''4'',''THB'',''4'',''SGD'',''4'')Account_currency,
+customer_no UniqueCustIdNumber--,b.branch_code
+from 
+NIBSS_CUSTOMER_'||v_date_char||'   a,
+src_sttm_cust_account b,
+fcubslive.ba_acct_old_new_xref@loc_fcubslive c,
+src_sttm_customer d
+where a.nuban_account_no=b.cust_ac_no
+and c.cod_acct_no_new=b.cust_ac_no
+and b.cust_no=d.customer_no
+and b.branch_code BETWEEN '||p_startbrn||' and '||p_endbrn||'
+union all
+select  substr(REGEXP_REPLACE(replace(replace(account_name_surname, '','','' ''),CHR(10)), ''[^A-Za-z]''),1,40) account_name_surname , 
+substr(REGEXP_REPLACE(replace(replace(account_name_others, '','','' ''),CHR(10)), ''[^A-Za-z]''),1,40)account_name_others,
+nuban_account_no, a.account_type,cust_rc_date,AccountStatus,null OLD_ACCOUNT_NUMBER,
+Bank_Verification_Number,decode(customer_type,''I'',''1'',''C'',''0'',''B'',''0'')Account_Designation,decode(B.ccy,''NGN'',''0'',''USD'',''1'',''GBP'',''2'',''EUR'',''3'',
+''DEM'',''4'',''CAD'',''4'',''FRF'',''4'',''JPY'',''4'',''CHF'',''4'',''NLG'',''4'',''ITL'',''4'',''INR'',''4'',''ZAR'',''4'',''SEK'',''4'',''CNY'',
+''4'',''CFA'',''4'',''NZD'',''4'',''THB'',''4'',''SGD'',''4'')Account_currency,
+customer_no UniqueCustIdNumber--,b.branch_code
+from 
+NIBSS_CUSTOMER_'||v_date_char||'   a, src_sttm_cust_account b,--fcubslive.ba_acct_old_new_xref c
+src_sttm_customer d
+where a.nuban_account_no=b.cust_ac_no
+--and c.cod_acct_no_new=b.cust_ac_no
+and b.cust_ac_no not in (select cod_acct_no_new from fcubslive.ba_acct_old_new_xref@loc_fcubslive)
+and b.cust_no=d.customer_no
+and b.branch_code BETWEEN '||p_startbrn||' and '||p_endbrn;
+commit;
+end;
+
+procedure prc_send_completion_mail (p_date date) as
+v_date_char varchar2(20) := to_char(p_date,'DDMONYYYY');
+v_emailmessage varchar2(32767);
+v_cnt varchar2(200);
+   
+cursor p_recordset_pb is select 1 from dual; 
+begin
+
+execute immediate 'truncate table nibss_cnt';
+
+execute immediate 'insert into nibss_cnt values(''NIBSS_CUSTOMER'',(select trim(to_char(nvl(count(1),0),''999,999,999,999,999.99'')) from NIBSS_CUSTOMER_'||v_date_char||'))';
+commit;
+--execute immediate 'select trim(to_char(nvl(count(1),0),''999,999,999,999,999.99'')) from NIBSS_CUSTOMER_'||v_date_char;
+
+    for l in   p_recordset_pb  loop   
+
+    v_emailmessage := null;
+    v_emailmessage :=  v_emailmessage || 'Dear' || ' ' || 'Colleague' || ', '   || chr(13) || chr(10);
+    v_emailmessage :=  v_emailmessage || chr(13) || chr(10);
+    v_emailmessage :=  v_emailmessage || 'Please be informed that all NIBSS Report has been run successfully, and placed in the location:'||  chr(13);
+    v_emailmessage :=  v_emailmessage || '\\Abp-filesvr02\info tech\NIBBS REPORT\NIBSSREPORT_'||v_date_char||'\'|| chr(13) || chr(10);
+    v_emailmessage :=  v_emailmessage || 'COUNT OF RECORDS:' || chr(13);
+    v_emailmessage :=  v_emailmessage || 'NIBSS_CUSTOMER_'||v_date_char|| ' - '||v_cnt|| chr(13) || chr(10);
+    v_emailmessage:=  v_emailmessage  || 'You can contact anyone in the Reporting '||'&'||' Business Intelligence team if the need arises' ||  chr(13) || chr(10);
+    v_emailmessage:=  v_emailmessage  || 'Best Regards,' || chr(13) || chr(10);
+   
+    --prc_send_mail_new('"FINTRACK REFRESH"','Reporting&BusinessIntelligence@accessbankplc.com', '"Refresh Initiation"', v_emailmessage);
+    --prc_send_mail_new('"FINTRACK REFRESH"','MPR@ACCESSBANKPLC.com', '"Refresh Initiation"', v_emailmessage);
+    dcp.prc_send_mail_new('"NIBSS REFRESH TRACKER"','Afolabi.Lagunju@ACCESSBANKPLC.com', '"NIBSS REFRESH FOR "'||v_date_char, v_emailmessage);
+
+    commit;
+   end loop;
+end;
+
+END;
+/

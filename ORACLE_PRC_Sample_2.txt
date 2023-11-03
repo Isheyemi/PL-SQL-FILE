@@ -1,0 +1,201 @@
+CREATE OR REPLACE procedure STGLIVE.auc2016_exceptions_fix (reference_date date)  as
+
+  v_rows_count          number;
+  v_seq                 number;
+  v_sql_text            varchar2(8000);
+  v_start_date      date :=trunc(reference_date,'year'); ----changed to 2019 31jan2019 to test new snapshot_1 table below by yeni
+  v_date            date := trunc(reference_date);  
+  v_rows_processed  number := 0;
+  v_message         varchar2(4000);
+  v_end_date        date := to_date('20211231','yyyymmdd');
+  
+begin
+
+--    prc_dormant(v_date);
+--    
+--    prc_inactivity(v_date);
+--    
+--    prc_new_funds(v_date);
+
+--   prc_remove_deposits;
+    
+    select process_seq.nextval into v_seq from dual;
+
+    insert into process_log_hdr(process_sequence, process_type, process_name, reference_date, status, message, row_count, start_date, end_date, duration)
+    values(v_seq, 'AUC2016_EXCEPTIONS', 'AUC2016_EXCEPTIONS', v_date, 'STARTED', null, 0 , sysdate, null, null);
+
+    commit;
+
+    update auc_2016_investment_17 set flag = 'N'  where reference_date = v_date;
+    
+    commit;
+    
+    execute immediate 'truncate table tmp_qualified_01';
+    
+    insert into tmp_qualified_01( ac_no, total_inflow, amount_booked) 
+    select  a.ac_no, total_inflow, amount_booked 
+      from (select ac_no, sum(funds) total_inflow from daily_new_funds where trn_dt >= v_start_date group by ac_no) a,
+           (select dflt_settle_ac,sum(amount) amount_booked from auc_2016_investment_17 a where reference_date = v_date
+               ---and contract_status = 'A' ---REMOVED BY YENI TO FIX MATURED INVESTMENTS MISSING ISH 15072020
+               group by dflt_settle_ac) b 
+      where a.ac_no = b.dflt_settle_ac
+        and total_inflow >= amount_booked;  
+        
+    commit;
+    
+    merge into (select *
+                  from auc_2016_investment_17 a
+                 where reference_date = v_date) a
+         using tmp_qualified_01 b
+            on (a.dflt_settle_ac = b.ac_no)
+    when matched
+    then
+       update set flag = 'Y';
+       
+    commit;
+    
+
+    update auc_2016_investment_17
+       set flag = 'Y'
+     where length (trim (dflt_settle_ac)) <> '10';
+
+    commit;             
+
+    execute immediate 'truncate table tmp_staff_account';
+    
+    insert into tmp_staff_account
+    select cust_ac_no   
+      from (select * from src_sttm_cust_account where account_class = '010003') a,  
+           (select distinct dflt_settle_ac from auc_2016_investment_17 where reference_date = v_date ) b    
+     where a.cust_ac_no = b.dflt_settle_ac;
+     
+    commit; 
+    
+        
+    merge into (select *
+                  from auc_2016_investment_17 a
+                 where reference_date = v_date) a
+         using tmp_staff_account b
+            on (a.dflt_settle_ac = b.cust_ac_no)
+    when matched
+    then
+       update set flag = 'Y';
+       
+    commit;
+    
+    --------------TO ADD INVESTMENTS PERMITTED BY FINCON ADDED BY YENNIE 6may2020
+      merge into (select *
+                  from auc_2016_investment_17 a
+                 where reference_date = v_date) a
+         using (select * from auc_invest_log a
+where ref_date = (select max(ref_date) from auc_invest_log where contract_ref_no = a.contract_ref_no)) b
+            on (a.contract_ref_no = b.contract_ref_no)
+    when matched
+    then
+       update set flag = flg_stat;
+       
+    commit;
+    
+    
+    ----TO FIX REACTIVATED ACCOUNTS BY SM and ABOVE (4thjan2021) ADDED BY YENNIE 27FEB2021
+insert into  AUC_CUSTID_LOG
+select CONTRACT_REF_NO, BOOKING_DATE, DFLT_SETTLE_AC, AMOUNT, 
+'4jan2021' NEW_DAT_CUST_OPEN,cif_creation_date ORIGINAL_DAT_CUST_OPEN, FLAG, sysdate REF_DATE
+from AUC_2016_INVESTMENT_17 a, (select CUSTOMER_NO, cif_creation_date from sttm_customer@loc_fcubslive) b
+where a.CUSTOMER_NO = b.CUSTOMER_NO(+)
+and dflt_settle_ac in
+(select dflt_settle_ac from drv_activated_account where reference_date = v_date
+union
+select cust_ac_no from drv_reactivated_account where reference_date = v_date)
+AND replace(STAFF_id,'/') in 
+(SELECT replace(STAFF_id,'/')
+                   FROM onebank_staff_detailS
+                  WHERE     staff_grade IN ('GM',
+                                            'AGM',
+                                            'DGM',
+                                            'SM')
+                        AND FY_SAV_TGT > 0)
+and reference_date = v_date; commit;
+    
+------TO ADD EDITED CUST OPEN DATE PERMITTED BY FINCON ADDED BY YENNIE 19jun2020
+      merge into (select *
+                  from auc_2016_investment_17 a
+                 where reference_date = v_date) a
+         using (select distinct * from AUC_CUSTID_LOG a
+where ref_date = (select max(ref_date) from AUC_CUSTID_LOG where contract_ref_no = a.contract_ref_no)) b
+            on (a.contract_ref_no = b.contract_ref_no)
+    when matched
+    then
+       update set DAT_CUST_OPEN = NEW_DAT_CUST_OPEN;
+       
+    commit;
+    --------------------------------------
+    ----FOR HIDA ---10052020
+    update auc_2016_investment_17 
+    set flag = 'Y' 
+    where reference_date = v_date 
+    and productcode in ('020034','020043')
+    and DAT_CUST_OPEN >= '1jan2020';
+    
+    commit;
+           
+delete auc_2016_inv_main_17
+where reference_date = v_date;commit;
+
+insert into auc_2016_inv_main_17
+select * from AUC_2016_INVESTMENT_17
+where reference_date = v_date;commit;
+
+
+     v_rows_processed := sql%rowcount;  commit;
+
+--update average for casa  --using PRC_AUC2016_UPDATE_CASA_AVG procedure     
+update AUC_2016_INVESTMENT_17 a
+set daily_average=(select /*+ PARALLEL(AUTO) */ distinct avg_bal from auc2016_invcasa_bal b where b.reference_date=a.reference_date and b.cust_ac_no=a.contract_ref_no), flag='Y'
+where src='CASA';
+commit;
+
+update auc_2016_inv_main_17 a
+set daily_average=(select /*+ PARALLEL(AUTO) */ distinct avg_bal from auc2016_invcasa_bal b where b.reference_date=a.reference_date and b.cust_ac_no=a.contract_ref_no), flag='Y'
+where src='CASA';
+commit;
+
+/*
+execute immediate 'truncate table tmp_onebank_investment';
+
+insert into tmp_onebank_investment select a.CONTRACT_REF_NO, a.CUSTOMER_NO, a.CUSTOMER_NAME1, a.COMP_MIS_4, a.COMP_MIS_2,  B.COMP_MIS_3 STAFF_ID, a.PRODUCTCODE, a.PRODUCTNAME, a.RATE, a.BOOKING_DATE, 
+a.MATURITY_DATE, a.AMOUNT, a.DAILY_AVERAGE, 
+a.DAT_CUST_OPEN, a.DFLT_SETTLE_AC, a.CONTRACT_STATUS, a.COD_DEP_NO, a.CURRENCY, a.REFERENCE_DATE, a.SRC, FLAG, a.ACTUAL_BOOK_DATE
+from auc_2016_inv_main_17 a,mitb_class_mapping@LOC_FCUBSLIVE b
+where A.CONTRACT_REF_NO = b.unit_ref_no(+)
+and booking_date >= '24jul2017'
+and reference_date = v_date;commit;
+*/
+
+    v_message := 'Completed Successfully';
+
+    update process_log_hdr
+       set status       = 'COMPLETED',
+           message      = 'SUCCESS',
+           row_count    = v_rows_count,
+           end_date     = sysdate,
+           duration     = (sysdate - start_date) * 24 * 3600
+     where process_sequence = v_seq;
+    commit;
+
+    exception when others then
+    v_message := substr(sqlerrm,1,200);
+       update process_log_hdr
+          set status       = 'FAILED',
+      message = v_message,
+    row_count = 0,
+     end_date = sysdate,
+     duration = (sysdate - start_date) * 24 * 3600
+        where process_sequence = v_seq;
+
+     commit; 
+    
+ 
+  
+    end;
+/

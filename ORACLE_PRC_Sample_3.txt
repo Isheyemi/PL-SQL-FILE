@@ -1,0 +1,106 @@
+CREATE OR REPLACE PROCEDURE STGLIVE.PRC_ATM_TRANS_STATUS_CHH (p_date date default trunc(sysdate - 2))
+AS
+
+--Job ID 6769
+
+
+  v_seq              number;
+  v_date             date := p_date;
+  v_rows_processed   integer;
+  v_message          varchar2 (4000);
+
+BEGIN
+
+    select process_seq.nextval into v_seq from dual;
+
+
+    INSERT INTO STGLIVE.CENTOPS_PROCESS_LOG (PROCESS_SEQUENCE,
+                                         PROCESS_TYPE,
+                                         PROCESS_NAME,
+                                         REFERENCE_DATE,
+                                         STATUS,
+                                         MESSAGE,
+                                         ROW_COUNT,
+                                         START_DATE,
+                                         END_DATE,
+                                         DURATION)
+               VALUES (V_SEQ,
+                       'ATM TRANSACTION STATUS ETL',---insert the process type
+                       'ATM TRANSACTION STATUS ETL',----insert the process name
+                       v_date,
+                       'STARTED',
+                       NULL,
+                       0,             
+                       SYSDATE,
+                       NULL,
+                       NULL);
+        commit;
+       
+     
+    insert into ATM_TRANS_STAT_REPORT
+    select j.TRANSACTION_TIME,
+    j.ID,
+    j.TERMINAL_ID,
+    j.TRANSACTION_TYPE,
+    j.STAN,
+    j.RRN,
+    j.CARD_NUMBER,
+    j.AMOUNT,
+    j.NOTES_PRESENTED,
+    j.NOTES_TAKEN,
+    j.MESSAGE,
+    j.CREATED_ON,
+    j.REASON,
+    j.REVERSAL_STATUS,
+    s.JOURNAL_DATE,
+    j.TRANSACTION_REVERSED
+    from ATMRECON.ATMRECON_JOURNALS j join ATMRECON.ATMRECON_JOURNAL_SPOOL s
+    on j.journal_ID = s.id
+    where JOURNAL_DATE between v_date-2 and v_date
+    and j.ID not in (
+        select ID from ATM_TRANS_STAT_REPORT 
+        where JOURNAL_DATE between v_date-2 and v_date
+    );
+    
+    v_rows_processed := SQL%ROWCOUNT;
+    
+    COMMIT;
+    
+    --EXECUTE IMMEDIATE 'INSERT INTO v_rows_processed select count(1) from ATM_TRANS_STAT_REP where JOURNAL_DATE = trunc(sysdate-1)'; 
+    
+    --SELECT count(*) INTO v_rows_processed from ATM_TRANS_STAT_REP where JOURNAL_DATE = trunc(sysdate-1);
+    
+    
+    DELETE FROM ATM_TRANS_STAT_REP WHERE JOURNAL_DATE = v_date-32;
+
+    COMMIT;
+
+
+    UPDATE STGLIVE.CENTOPS_PROCESS_LOG 
+        SET STATUS = 'COMPLETED', 
+         MESSAGE = 'SUCCESS', 
+         ROW_COUNT = v_rows_processed, 
+         END_DATE = SYSDATE, 
+         DURATION = (SYSDATE - START_DATE) * 24 * 3600 
+         WHERE PROCESS_SEQUENCE = V_SEQ;
+    COMMIT;
+        
+           
+    EXCEPTION 
+      WHEN OTHERS 
+      THEN 
+         V_MESSAGE := SUBSTR (SQLERRM, 1, 200); 
+     
+         UPDATE STGLIVE.CENTOPS_PROCESS_LOG 
+            SET STATUS = 'FAILED', 
+                MESSAGE = V_MESSAGE, 
+                ROW_COUNT = v_rows_processed, 
+                END_DATE = SYSDATE, 
+                DURATION = (SYSDATE - START_DATE) * 24 * 3600 
+          WHERE PROCESS_SEQUENCE = V_SEQ; 
+     
+        COMMIT; 
+   
+   
+  END;
+/
